@@ -10,6 +10,14 @@ Terry is **async** — submit via Gary's transform endpoint, poll via Gary's pol
 
 Terry doesn't have his own external endpoints. You call him through Gary:
 
+Use Terry as a short-section color tool, not as the final step on a long completed song unless you intentionally want only an excerpt transformed. MelodyFlow returns about 30 seconds, so a common path is:
+
+```
+short seed or 30-second section -> Terry transform -> Gary/Carey continuation or completion
+```
+
+For a two-minute song, transform selected sections individually or use Carey cover for full-length restyling.
+
 ### POST /api/juce/transform_audio
 
 **Parameters (JSON body):**
@@ -19,7 +27,7 @@ Terry doesn't have his own external endpoints. You call him through Gary:
 | `audio_data` | string | no | — | Or provide audio directly (base64 WAV) |
 | `variation` | string | yes | — | Transform preset name. Use `"custom"` for free-text prompts |
 | `custom_prompt` | string | no | — | Free-text style prompt (only used with `variation: "custom"`) |
-| `flowstep` | float | no | — | Flow step magnitude. Higher = more dramatic transformation |
+| `flowstep` | float | no | — | Flow step magnitude. Higher values stay closer to source; lower values transform more radically |
 | `solver` | string | no | — | ODE solver algorithm |
 
 Either `session_id` or `audio_data` is required.
@@ -64,6 +72,6 @@ The `custom_prompt` is a free-text description of the target style. Some ideas:
 ## Important Notes
 
 - Transforms work on audio up to ~30 seconds. For longer audio, transform sections individually.
-- Only 1 transform can run at a time across the entire system (MelodyFlow is single-threued with a dedicated queue).
-- The `flowstep` parameter controls how far the transform deviates from the original. Start low and increase if the result is too subtle.
+- Only 1 transform can run at a time across the entire system (MelodyFlow is single-threaded with a dedicated queue).
+- The `flowstep` parameter controls how far the transform deviates from the original, but it is reversed from what many agents expect: high values such as `0.13`-`0.15` stay closer to the source, while lower values produce more radical transformations.
 - Use `undo_transform` if you don't like the result — it restores the previous audio.

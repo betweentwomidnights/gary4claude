@@ -1,0 +1,9 @@
+__pycache__/
+*.py[cod]
+
+# Generated song attempts and API run artifacts.
+outputs/
+
+# One-off live API experiment runners.
+scripts/make_song_attempt.py
+scripts/carey_branch.py

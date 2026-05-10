@@ -1,6 +1,6 @@
 # gary4claude
 
-AI music production skill for Claude Code agents. Gives your agent access to a network of music generation APIs — text-to-audio, MusicGen continuation, structured synthesis, AI vocals, and audio transforms.
+AI music production skill for Claude Code agents. Gives your agent access to a network of music generation APIs — text-to-audio, MusicGen continuation, structured synthesis, ACE-Step cover/continuation, LoRA style injection, and audio transforms.
 
 ## The Cast
 
@@ -9,7 +9,7 @@ AI music production skill for Claude Code agents. Gives your agent access to a n
 | **Jerry** | Text-to-audio generation with BPM-aware looping (stable-audio + finetunes) |
 | **Gary** | MusicGen continuation — chain generations to build long tracks |
 | **Foundation** | Structured synth/sample generation with randomizable presets |
-| **Carey** | AI vocals and stems over existing audio (ACE-Step) |
+| **Carey** | ACE-Step cover/continuation with LoRA captions; optional stem generation |
 | **Terry** | Audio style transfer — transform audio with a text prompt (MelodyFlow) |
 
 ## Install
@@ -39,9 +39,11 @@ Use the gary4claude skill to make me a 2-minute DnB track with AI vocals.
 Or get specific:
 
 ```
-Use the jerry skill to generate a 174bpm drum loop, then use the gary skill
-to continue it into a 2-minute track, then have carey sing over it.
+Use the gary4claude skill to make a 2-minute 174bpm DnB track in A minor,
+then use Carey's billie LoRA adapter with cover/complete.
 ```
+
+Agents should build songs sequentially: make one request, wait for the returned audio, save it, then decide the next step. Do not launch parallel generations unless the user explicitly asks for alternate takes.
 
 ## Skill Files
 
@@ -49,8 +51,28 @@ to continue it into a 2-minute track, then have carey sing over it.
 - `jerry.md` — stable-audio: text-to-audio, loops, finetune prompts
 - `gary.md` — MusicGen: continuation, retry, transform, model switching
 - `foundation.md` — Foundation-1: randomize + generate, BPM handling
-- `carey.md` — ACE-Step: lego vocals, complete continuation
+- `carey.md` — ACE-Step: cover, complete continuation, LoRAs, captions, optional lego stems
 - `terry.md` — MelodyFlow: audio transforms via Gary
+
+## Utility Scripts
+
+The `scripts/` directory contains stdlib-only WAV helpers for agents that should not need to write their own audio glue code:
+
+- `scripts/mix_wavs.py` — mix compatible WAV loops/stems
+- `scripts/tile_wav.py` — repeat a loop to a target bar count, duration, or reference WAV length
+- `scripts/trim_wav.py` — crop by seconds or bars
+- `scripts/wav_info.py` — inspect duration, sample rate, channels, and peak
+- `scripts/gary_preflight.py` — verify a WAV is long enough for Gary `prompt_duration` and get a tiling recommendation
+- `scripts/base64_wav.py` — encode/decode WAV files for API payloads
+
+Example:
+
+```bash
+python scripts/gary_preflight.py seed_4bar.wav --prompt-duration 6
+python scripts/tile_wav.py drums_4bar.wav drums_8bar.wav --bars 8 --bpm 174
+python scripts/mix_wavs.py drums_8bar.wav synth_8bar.wav -o seed.wav --gain 0.8 --gain 0.7 --normalize
+python scripts/tile_wav.py seed.wav seed_2min.wav --seconds 120
+```
 
 ## API Base URL
 
