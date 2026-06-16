@@ -7,6 +7,7 @@ AI music production skill for Claude Code agents. Gives your agent access to a n
 | Name | What it does |
 |------|-------------|
 | **Jerry** | Text-to-audio generation with BPM-aware looping (stable-audio + finetunes) |
+| **SA3** | Stable Audio 3 generation, loops, continuation, transform, and blendable LoRAs |
 | **Gary** | MusicGen continuation — chain generations to build long tracks |
 | **Foundation** | Structured synth/sample generation with randomizable presets |
 | **Carey** | ACE-Step cover/continuation with LoRA captions; optional stem generation |
@@ -49,6 +50,7 @@ Agents should build songs sequentially: make one request, wait for the returned 
 
 - `gary4claude.md` — Top-level overview, routing, workflows, audio flow between services
 - `jerry.md` — stable-audio: text-to-audio, loops, finetune prompts
+- `sa3.md` — Stable Audio 3: loops, continuation, transform, LoRA blending
 - `gary.md` — MusicGen: continuation, retry, transform, model switching
 - `foundation.md` — Foundation-1: randomize + generate, BPM handling
 - `carey.md` — ACE-Step: cover, complete continuation, LoRAs, captions, optional lego stems

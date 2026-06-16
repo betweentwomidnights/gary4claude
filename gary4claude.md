@@ -7,6 +7,7 @@ You have access to a network of AI music generation services at `https://g4l.the
 | Name | Service | What it does |
 |------|---------|-------------|
 | **Jerry** | stable-audio | Text-to-audio. Generates drums, loops, textures from a prompt. BPM-aware looping. |
+| **SA3** | stable-audio-3 | Stable Audio 3 generation, BPM/key-aware loops, continuation, same-length transform, and blendable LoRAs. |
 | **Gary** | g4lwebsockets | MusicGen continuation. Takes audio + extends it with a chosen finetune model. Chain multiple continuations to build long tracks. |
 | **Foundation** | foundation | Structured synth/sample generation. Randomizable presets with fine-grained timbre control. BPM-locked, time-stretched to host tempo. |
 | **Carey** | ace-step | Cover and complete modes for ACE-Step restyling, continuation, named LoRA adapter selection, and optional stem workflows. |
@@ -19,6 +20,7 @@ All requests go through: `https://g4l.thecollabagepatch.com`
 | Path prefix | Routes to |
 |------------|-----------|
 | `/audio/*` | Jerry (stable-audio) |
+| `/sa3/*` | SA3 (Stable Audio 3) |
 | `/carey/*` | Carey (ace-step wrapper) |
 | `/foundation/*` | Foundation |
 | `/api/juce/*` | Gary (g4lwebsockets REST) |
@@ -26,7 +28,7 @@ All requests go through: `https://g4l.thecollabagepatch.com`
 
 ## Universal Polling Pattern
 
-Jerry is synchronous (returns audio immediately). All other services are async:
+Jerry is synchronous (returns audio immediately). SA3, Gary, Foundation, Carey, and Terry-style transforms are async:
 
 1. **Submit** a generation request → get back `session_id` (or `task_id` for Carey)
 2. **Poll** the status endpoint every 3-5 seconds
@@ -34,7 +36,7 @@ Jerry is synchronous (returns audio immediately). All other services are async:
 4. Use that returned `audio_data` as the input to the next step
 
 ```bash
-# Generic poll loop — works for Gary, Foundation, and Carey
+# Generic poll loop — works for SA3, Gary, Foundation, and Carey
 while true; do
   RESP=$(curl -s "$POLL_URL")
   STATUS=$(echo "$RESP" | jq -r '.status // .generation_in_progress')
@@ -65,11 +67,11 @@ At each step, inspect what you have and choose one next move:
 
 | If you have... | Good next moves |
 |----------------|-----------------|
-| No audio yet | Make a Jerry loop, or make a Foundation preset/generation |
-| A short drum/percussion loop | Continue with Gary, mix with Foundation, or tile it to match another loop |
-| A short synth/bass/pad loop | Mix with Jerry drums, continue with Gary, or send to Carey complete |
-| A mixed 4- or 8-bar seed | Tile it, continue with Gary, transform a short version with Terry, or send to Carey complete |
-| A useful 30-second section | Continue with Gary, complete with Carey, or cover with Carey |
+| No audio yet | Make a Jerry loop, make an SA3 loop/generation, or make a Foundation preset/generation |
+| A short drum/percussion loop | Continue with Gary or SA3, transform with SA3/Terry, mix with Foundation, or tile it to match another loop |
+| A short synth/bass/pad loop | Mix with Jerry drums, continue with Gary or SA3, transform with SA3, or send to Carey complete |
+| A mixed 4- or 8-bar seed | Tile it, continue with Gary or SA3, transform with SA3/Terry, or send to Carey complete |
+| A useful 30-second section | Continue with Gary or SA3, transform with SA3, complete with Carey, or cover with Carey |
 | A full song or long section | Cover with Carey, complete/extend with Carey, or stop |
 | A Carey complete result with lyrics | Reuse the exact same lyrics if you later use Carey cover |
 
@@ -82,7 +84,7 @@ Jerry loop -> Gary continue -> Terry transform 30-second section -> Carey comple
 Foundation bass loop -> Gary continue -> Carey cover -> Carey complete
 ```
 
-Do not start Carey while Gary is still generating. Do not start Terry while Foundation is still generating. Do not submit three alternate covers while deciding what to do next. The agent should make a plan, execute one step, inspect/save the returned audio artifact, then choose the next branch.
+Do not start Carey while Gary or SA3 is still generating. Do not start Terry while Foundation is still generating. Do not submit three alternate covers while deciding what to do next. The agent should make a plan, execute one step, inspect/save the returned audio artifact, then choose the next branch.
 
 Terry/MelodyFlow note: Terry transforms a short section, commonly around 30 seconds. It is usually best before final full-song completion, or when you intentionally want to transform only an excerpt. If you send Terry a completed two-minute Carey song, the result may only represent the first short section rather than the whole song.
 
@@ -91,21 +93,21 @@ Terry/MelodyFlow note: Terry transforms a short section, commonly around 30 seco
 All audio is exchanged as **base64-encoded WAV**. The `audio_data` field from one service's output plugs directly into another service's `audio_data` input.
 
 ```
-Jerry output.audio → Gary input.audio_data (continue it)
-Foundation output.audio_data → Gary input.audio_data (continue it)
-Gary output.audio_data → Terry input via Gary transform (restyle it)
-Gary output.audio_data → Carey cover/complete input.audio_data (LoRA-guided restyling or continuation)
-Any output → Carey complete input (extend with ACE-Step's arrangement)
+Jerry output.audio -> Gary or SA3 input.audio_data (continue or transform it)
+SA3 output.audio_data -> Gary, SA3 continue/transform, Carey cover/complete, or Terry transform
+Foundation output.audio_data -> Gary or SA3 input.audio_data (continue or transform it)
+Gary output.audio_data -> Terry input via Gary transform, SA3 transform/continue, or Carey cover/complete
+Any output -> Carey complete input (extend with ACE-Step's arrangement)
 ```
 
 ## Common Full-Track Shape
 
-Before generating audio, decide the song's **BPM**, **key root**, and **key mode**. Keep those values fixed across Jerry, Foundation, Gary descriptions, and Carey requests.
+Before generating audio, decide the song's **BPM**, **key root**, and **key mode**. Keep those values fixed across SA3 prompts, Jerry prompts, Foundation fields, Gary descriptions, and Carey requests.
 
 1. **Plan**: Pick BPM + key/scale first, e.g. `174 BPM, A minor`
-2. **Generate source material**: Use Jerry for rhythmic/audio loops, Foundation for keyed synth/bass/pad material, or both
+2. **Generate source material**: Use Jerry for clean rhythmic/audio loops, SA3 for LoRA-colored loops/generation, Foundation for keyed synth/bass/pad material, or a combination
 3. **Prepare a seed**: Mix/tile/trim locally if useful
-4. **Choose the next branch**: Gary for continuation, Terry for short-section transform, Carey complete for full-song growth, or Carey cover for LoRA-guided restyling
+4. **Choose the next branch**: Gary or SA3 for continuation, SA3/Terry for transform, Carey complete for full-song growth, or Carey cover for LoRA-guided restyling
 5. **Wait for audio after every request**: Save returned `audio_data`, then decide the next step
 6. **Stop when the result satisfies the user's goal**: A one-service Foundation -> Carey complete path can be enough
 
@@ -116,20 +118,21 @@ Lego mode is powerful, but it is not the default agentic path for full-song gene
 An agent should not call the services in isolation. Treat the whole run like a small DAW session:
 
 1. Choose a target: genre, BPM, key root, key mode, approximate length, and whether vocals are desired.
-2. Generate short, grid-aligned building blocks at the chosen BPM/key.
+2. Generate short, grid-aligned building blocks at the chosen BPM/key. Jerry and SA3 are both good loop sources.
 3. Combine the best blocks into a seed track.
-4. Use continuation to create sections.
-5. Use cover/complete with a named LoRA adapter when the user asks for one or when discovery shows an appropriate adapter.
+4. Use continuation to create sections. Gary and SA3 have different continuation character; choose based on the returned audio.
+5. Use transform/cover/complete with named LoRA adapters when the user asks for one or when discovery shows an appropriate adapter.
 6. Leave lego for explicit stem experiments when the user asks for that workflow.
 
 Keep a small session state while working:
 
 | State | Why it matters |
 |-------|----------------|
-| `bpm` | Needed by Jerry prompts, Foundation, and Carey |
-| `key_scale` | Needed by Foundation and Carey cover/complete |
+| `bpm` | Needed by SA3/Jerry prompts, SA3 loop math, Foundation, and Carey |
+| `key_scale` | Needed by SA3 prompts, Foundation, Gary descriptions when useful, and Carey cover/complete |
 | `lyrics` | Prefer empty lyrics for sims-core vocals; if written for Carey complete, reuse the same lyrics for Carey cover |
 | `caption` | Prefer LoRA-specific captions from Carey discovery |
+| `sa3_loras` | Optional SA3 LoRA blend used for prompt dice and reproducibility |
 | latest `audio_data` | Every async generation returns the next audio artifact |
 
 For Carey complete, prefer `lyrics: ""` unless the user explicitly wants written lyrics. Sims-core vocals are a valid and often desirable autonomous default.
@@ -204,6 +207,22 @@ curl -s "https://g4l.thecollabagepatch.com/carey/captions?lora=billie"
 
 LoRA names such as `billie`, `koan`, or `kev` are backend adapter ids, not prompt text. When API calls are allowed, discover available adapters with `/carey/loras`; if the user names one of those adapters, use that exact key. Get the caption with `/carey/captions?lora=<adapter_id>`, then pass the returned `caption` directly in `/carey/cover` or `/carey/complete` and pass the same adapter id in the `lora` field. This matters: a LoRA-specific caption is usually a better control signal than a generic freeform style prompt.
 
+## SA3 Prompt Dice and LoRA Blending
+
+SA3 has its own LoRA registry and prompt dice endpoint:
+
+```bash
+curl -s https://g4l.thecollabagepatch.com/sa3/loras
+curl -s https://g4l.thecollabagepatch.com/sa3/prompts
+curl -s "https://g4l.thecollabagepatch.com/sa3/prompts?lora=kev&lora=keygen"
+```
+
+Current public SA3 LoRAs include `kev`, `koan`, `keygen`, and `succession`, but agents should discover the live list instead of hardcoding it. SA3 LoRAs can be blended by sending a `loras` array with one entry per active adapter. Interesting results often come from several adapters at different strengths rather than one adapter at maximum.
+
+Use `/sa3/prompts` like a dice button. If you plan to use one or more LoRAs, pass those names to `/sa3/prompts` and choose from the returned prompt buckets. Then append the session BPM and key/scale before submitting generation, loop, continuation, or transform. SA3 understands key/scale in prompt text, so it should share the same global song state as Foundation and Carey.
+
+SA3 transform strength is most useful around `0.6-0.9`: lower values keep more of the source but can leave artifacts; around `0.9` is a stronger transformation. If a subtle SA3 transform has the right musical idea but rough edges, Carey cover can be a good cleanup/polish branch.
+
 Important routing caveat: check `/carey/loras` before choosing where to use a LoRA. Current public LoRAs are intended for the ACE `base` and `turbo` backends, which means they are a natural fit for `/carey/cover` and `/carey/complete`. Lego currently routes to the regular ACE backend, so a LoRA may be rejected there unless its `backends` list includes `"regular"`.
 
 ## Carey Cover as Style Injection
@@ -220,7 +239,8 @@ Important routing caveat: check `/carey/loras` before choosing where to use a Lo
 
 - When combining outputs from different services, keep BPM consistent across all calls
 - Foundation snaps to nearest supported BPM (100, 110, 120, 128, 130, 140, 150) but time-stretches output to your requested `host_bpm`
-- Jerry requires BPM in the prompt text (e.g., "120bpm drum loop")
+- Jerry and SA3 loop generation require BPM, either in the prompt text (e.g., "120bpm drum loop") or via SA3's explicit `bpm` field
+- SA3 is key/scale-promptable. Append the same key/scale text you are carrying globally, such as `A minor` or `C major`, to SA3 generate/loop/continue/transform prompts
 - Foundation needs `key_root` and `key_mode`; Carey cover/complete can take `key_scale` like `"A minor"`
 - Carey needs an explicit `bpm` parameter
 - Gary inherits BPM from the audio you feed it — no explicit BPM param needed
@@ -238,6 +258,7 @@ For autonomous full-song generation, prefer Carey cover/complete. Use lego only 
 
 For detailed endpoint documentation, parameter references, and examples, load the individual service skill:
 - `jerry.md` — stable-audio endpoints and prompt craft
+- `sa3.md` — Stable Audio 3 loops, continuation, transform, LoRA blending
 - `gary.md` — MusicGen continuation, retry, transform
 - `foundation.md` — structured synthesis with randomize + generate
 - `carey.md` — ACE-Step cover, complete continuation, LoRAs, captions, and optional lego stems
