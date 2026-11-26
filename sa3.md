@@ -3,7 +3,9 @@
 Stable Audio 3 medium model with async text-to-audio, BPM-aware loop generation,
 promptable key/scale, audio continuation, audio transformation, and blendable LoRA adapters.
 
-Base: `https://g4l.thecollabagepatch.com/sa3`
+Hosted base: `https://g4l.thecollabagepatch.com/sa3`
+
+Local base: `http://127.0.0.1:8006`. Ensure it with `python "<skill-dir>/scripts/gary4local.py" ensure sa3 --json`. Remove the hosted `/sa3` prefix from local paths. Resolve `<skill-dir>` from `SKILL.md`; see `local.md`.
 
 All SA3 generation endpoints are **async**. Submit one request, get a `session_id`,
 then poll `/sa3/poll_status/{session_id}` until `status: "completed"` and
@@ -88,11 +90,124 @@ Prefer the modern `loras` array instead of legacy single-LoRA fields:
 
 Rules of thumb:
 
-- Omit `loras` or send an empty array when you want the base model.
+- Send `loras: []` when you want the unadapted base model; omission can select a backend default adapter.
 - Use `GET /sa3/loras` before naming adapters.
 - Blending several LoRAs at different strengths is often more interesting than maxing one adapter.
 - Send every active LoRA to `/sa3/prompts` so the dice prompt can reflect the chosen blend.
 - Treat LoRA strengths as creative controls, not correctness flags. Listen/inspect before deciding the next step.
+
+## LoRA Automation Lanes: Arrange Changes Over Time
+
+`lora_lanes` gives each LoRA its own strength curve and optional prompt. The
+top-level `prompt` describes the shared musical scene; a lane prompt describes
+the character that lane contributes. An omitted/empty lane prompt inherits the
+base prompt. A lane prompt is not a separate song or an isolated audio stem.
+The model renders one jointly generated result.
+
+Before using lanes, require `GET /sa3/health` → `capabilities.lora_lanes: true`.
+An older server can ignore unknown fields and produce audio with no automation;
+do not silently accept that as a successful lane render. The hosted health
+checked on 2026-11-26 advertises 8 lanes, 256 points per lane, and only the
+`velocity` envelope mode. Discover current limits and adapter names at runtime.
+
+| Control | Meaning |
+|---------|---------|
+| `lora_lanes[].loras` | Adapters local to that lane; normally one discovered name with `strength: 1.0` |
+| `lora_lanes[].envelope` | Ordered `[seconds, amount]` pairs; linear between points, held constant outside endpoints |
+| `lora_lanes[].prompt` | Optional lane-specific conditioning; append the same session BPM and key as the base prompt |
+| Top-level `loras` | Static adapters shared by the base and all lane passes |
+| `lane_isolation` | Separates sections with different lane amounts during denoising; 0 disables it |
+| `lane_isolation_until` | Sigma threshold; **0 runs isolation through the last step** |
+| `lane_average_until` | Above this sigma threshold, use each lane's average strength to establish a shared arrangement; 0 disables averaging |
+
+The curve multiplies the lane adapter's `strength`. With `strength: 1.0`, curve
+amounts directly specify the intended strength (the UI uses 0–2). Do not also
+put an automated adapter in top-level `loras`: that applies a shared adapter
+even where its lane is zero. Use `loras: []` for a base model plus automated
+adapters. Send an explicit empty list for an intentional unadapted request;
+older service defaults can choose a default adapter when fields are omitted.
+
+There are two different axes: envelope times are seconds in the audio, whereas
+`interval_min/max`, isolation thresholds and averaging thresholds control
+denoising noise levels. `interval_min/max` do not place a LoRA in a song section.
+Curve transitions guide timbre/arrangement; self-attention can blend neighboring
+sections, so they do not promise a hard audio edit at a sample boundary.
+
+### Example: Eight Bars With Two Independently Prompted Lanes
+
+At 120 BPM in 4/4, one bar is 2 seconds and eight bars last 16 seconds.
+After discovery confirms `kev` and `keygen`, send this body to
+`POST /sa3/generate/loop`:
+
+```json
+{
+  "prompt": "instrumental electronic groove, steady drums and deep bass, 120 bpm, A minor",
+  "bars": 8, "bpm": 120,
+  "seed": 831001, "steps": 8, "cfg_scale": 1.0, "shift": "none",
+  "loras": [],
+  "lora_lanes": [
+    {
+      "loras": [{"name": "kev", "strength": 1.0}],
+      "prompt": "gritty guitars and heavy syncopated drums, 120 bpm, A minor",
+      "envelope": [[0, 0.9], [6, 0.9], [10, 0.15], [16, 0.15]]
+    },
+    {
+      "loras": [{"name": "keygen", "strength": 1.0}],
+      "prompt": "chiptune arpeggios and playful digital leads, 120 bpm, A minor",
+      "envelope": [[0, 0.1], [6, 0.1], [10, 0.85], [16, 0.85]]
+    }
+  ],
+  "lane_isolation": 1.0,
+  "lane_isolation_until": 0.0,
+  "lane_average_until": 0.5625
+}
+```
+
+The opening emphasizes Kev; bars 4–5 crossfade toward Keygen. Choose each lane's
+prompt independently, optionally using `/sa3/prompts?lora=<that_lane_name>`.
+Use a shared base prompt for tempo, harmony and continuity. Keep every prompt
+compact and include the common BPM/key once in each.
+
+### Translate a Musical Plan Into API Time
+
+For 4/4, `seconds_per_bar = 240 / bpm`. Bar 1 starts at 0; bar N starts at
+`(N - 1) * seconds_per_bar`. For other meters use
+`60 / bpm * numerator * 4 / denominator` when BPM counts quarter notes.
+
+- Generation/loop: curves start at 0 and cover the requested output.
+- Transform: curves start at 0 and cover the measured source duration.
+- Continue: **time 0 is the start of the retained source**, not the new tail.
+  To automate 8 new seconds after an 8-second source, move a local
+  `[[0, 0.2], [8, 1.0]]` curve to `[[8, 0.2], [16, 1.0]]`.
+  The JUCE client makes this offset explicitly; it draws lanes over only the
+  added region. Do not send normalized 0–1 UI positions as API seconds.
+- After cropping/replacing a source, measure its new length and recalculate the
+  next request's lane offsets. Save every source/take before trimming.
+
+With `shift: "none"` and eight steps, JUCE's blend stops map to:
+
+| Blend | Shared early steps | `lane_average_until` |
+|-------|--------------------|----------------------|
+| Smooth | 4 | 0.5625 |
+| Next | 3 | 0.6875 |
+| Next | 2 | 0.8125 |
+| Responsive | 0 | 0 |
+
+All four use `lane_isolation: 1`, `lane_isolation_until: 0`. These values follow
+`SA3LaneModel.h`'s linear schedule at `steps: 8`, with generation or
+continuation starting at sigma 1. **Do not reuse the table unchanged for a
+transform, another shift or step count.** JUCE computes the thresholds from
+the actual schedule and transform strength. For an initial transform use
+`lane_average_until: 0` with the same gentle isolation, or derive thresholds
+from that implementation. The current JUCE UI defaults to `logsnr`, so its
+actual request thresholds differ from this deliberately linear example.
+The raw API defaults leave averaging/isolation off;
+send the chosen values explicitly.
+
+Each velocity lane adds a diffusion pass per step; three lanes cost more than
+one static blend. Begin with two intentional curves, avoid redundant points,
+and add more lanes only for a musical reason. The hosted backend currently
+does not advertise the native server's cheaper `layer` mode.
 
 ## Prompt Responsibilities
 
@@ -162,6 +277,13 @@ settings can retain more of the source but may leave artifacts. If a subtle tran
 has the right idea but sounds rough, a later Carey cover can be a useful cleanup/polish
 step.
 
+For a finished full song, SA3 transform can be the single final polish pass because
+it preserves the input duration. Keep the established BPM and key/scale explicit in
+the prompt. After a successful final transform, stop rather than automatically
+sending the result through another model. If the transform has the right idea but
+audible roughness, Carey cover may replace it as the chosen final pass; avoid treating
+both as mandatory stages.
+
 ### POST /sa3/continue
 
 Continue existing audio. Output length is source duration plus `continuation_seconds`.
@@ -196,7 +318,7 @@ SA3 is useful at the beginning, middle, or end of a chain:
 
 - Start with SA3 when LoRA color or bar-exact loops are central to the prompt.
 - Use SA3 continuation when a loop or section should grow while retaining its source.
-- Use SA3 transform when a section has good structure but needs a different style or LoRA blend.
+- Use SA3 transform when a section has good structure but needs a different style or LoRA blend, including as the one final same-length polish pass on a full song.
 - Use Carey cover after SA3 when the result needs cleaner full-track polish or ACE-Step LoRA character.
 - Use Gary after SA3 when MusicGen continuation/model switching is the interesting next branch.
 
@@ -207,8 +329,19 @@ keeping the style family related. Do this as a creative option, not a required p
 ## Common Caveats
 
 - SA3 is async, unlike Jerry.
+- Lanes are capability-gated. Save the exact envelopes, lane prompts and blend settings with the take.
 - LoRA names are dynamic; discover them.
 - Always save returned `seed` and `meta`.
 - Keep the global BPM and key/scale explicit in prompts. For loops, BPM must be in `prompt` or `bpm`; key/scale stays prompt text.
 - For transforms, do not assume lower strength is always cleaner. Listen/inspect and consider a cleanup pass if needed.
 - Avoid backend/admin endpoints such as `/reload`, `/load`, and `/unload` unless Kev explicitly asks.
+
+## Contract Evidence
+
+Reviewed 2026-11-26: gary4juce `Source/Components/Jerry/SA3Lanes.cpp`,
+`SA3LaneModel.h`, and `Source/PluginEditor.Jerry.cpp`; sa3.cpp
+`docs/SERVER.md` for lane semantics. Hosted `/sa3/health` was checked through
+Spark's existing proxy over SSH and advertises lane support. Native sa3.cpp's
+unified `/generate` + `init_path` API differs from the hosted wrapper's
+`/transform` and `/continue`; use the hosted endpoints above for this profile.
+The musical examples have not yet been auditioned as part of this doc review.

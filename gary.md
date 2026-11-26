@@ -2,7 +2,11 @@
 
 Audio continuation using AudioCraft MusicGen finetunes. Feed Gary audio and he extends it. Chain multiple continuations to build long tracks. Also handles retries (regenerate from last input) and transforms (via Terry/MelodyFlow).
 
-Base: `https://g4l.thecollabagepatch.com`
+Hosted base: `https://g4l.thecollabagepatch.com`
+
+Local Gary base: `http://127.0.0.1:8000`. Ensure it with `python "<skill-dir>/scripts/gary4local.py" ensure gary --json`. Resolve `<skill-dir>` from `SKILL.md`.
+
+Terry transform routes documented here use local port 8002, not Gary's port 8000. Ensure Terry separately before calling `/api/juce/transform_audio` or polling a Terry transform. See `local.md`.
 
 All Gary endpoints are **async** — submit, then poll `/api/juce/poll_status/{session_id}` until done.
 
@@ -18,21 +22,21 @@ For building long tracks, `continue_music` is almost always what you want.
 
 ## Prompt Duration Preflight
 
-Gary's practical default `prompt_duration` is **6 seconds**. Before calling either `process_audio` or `continue_music`, inspect the source WAV duration and make sure it is longer than the prompt window. A short Jerry loop can be around 5.5 seconds at fast tempos; sending it to Gary with `prompt_duration: 6`, `8`, or `12` can fail or produce ambiguous backend tensor errors.
+Gary supports a `prompt_duration` as short as **2 seconds**. Six seconds gives Gary more musical context for longer sources, but it is not a minimum. A short Jerry loop around 5.5 seconds can go directly to Gary with `prompt_duration: 2`; do not tile it merely to satisfy the old 6-second recommendation.
 
 Agent rule:
 
 1. Decode/save the source audio as WAV.
-2. Run `scripts/gary_preflight.py` with the intended `prompt_duration`.
-3. If it says `tile_before_gary`, tile the WAV first with `scripts/tile_wav.py`, then encode the tiled WAV for Gary.
+2. Choose `prompt_duration: 2` when the source is too short for 6 seconds. Prefer 6 seconds when the source is comfortably longer and the extra context is musically useful.
+3. Run `gary_preflight.py` with that intended duration.
+4. Tile only when the source is still shorter than the chosen prompt window or when repetition is itself useful to the arrangement.
 
 ```bash
-python scripts/gary_preflight.py seed.wav --prompt-duration 6
-python scripts/tile_wav.py seed.wav seed_for_gary.wav --seconds 12
-python scripts/base64_wav.py encode seed_for_gary.wav -o seed_for_gary.b64
+python "<skill-dir>/scripts/gary_preflight.py" seed.wav --prompt-duration 2
+python "<skill-dir>/scripts/base64_wav.py" encode seed.wav -o seed.b64
 ```
 
-Use `prompt_duration: 6` unless you have a reason to use more context. Only raise it to `8` or `12` after confirming the source audio is longer than that value. This applies to both endpoints:
+Use 2 seconds for short loops and 6 seconds as the context-rich default for longer material. Only raise it to 8 or 12 after confirming the source is longer than that value. This applies to both endpoints:
 
 - `process_audio` needs enough audio at the **start** for the first `prompt_duration` seconds.
 - `continue_music` needs enough audio at the **end** for the last `prompt_duration` seconds.
@@ -63,10 +67,10 @@ MusicGen has an **abrupt stop problem**. If you blindly chain 4 continuations in
 **How an agent should handle this:** After each continuation, check the result. If the audio duration didn't grow meaningfully, or if you can detect silence, use `retry_music` with different parameters. You can also use `update_cropped_audio` to trim before continuing.
 
 **Practical retry strategy:**
-1. Continue with `prompt_duration: 6` after running the preflight check
+1. Continue with `prompt_duration: 2` for a short source or 6 for a longer source after running the preflight check
 2. Poll until complete, get `audio_data`
 3. If the result seems short or you want a different take: `retry_music` with the same session
-4. Optionally try a shorter `prompt_duration` (6-8) or different model on retry
+4. Optionally try a shorter `prompt_duration` (2-4) or different model on retry
 5. Once you have a good continuation, continue again from there
 
 ## Model Switching Mid-Chain
@@ -93,11 +97,14 @@ Start a new session. Uses the **first** `prompt_duration` seconds as input conte
 |-------|------|----------|---------|-------|
 | `audio_data` | string | yes | — | Base64-encoded WAV |
 | `model_name` | string | yes | — | MusicGen finetune (see models below) |
-| `prompt_duration` | int | yes | — | Seconds from the **start** of audio to use as context (3-30) |
+| `prompt_duration` | int | yes | — | Seconds from the **start** of audio to use as context; 2 is supported locally, 2-30 is the practical range |
 | `description` | string | no | — | Text prompt to guide generation |
 | `top_k` | int | no | 250 | Top-k sampling (higher = more variety) |
 | `temperature` | float | no | 1.0 | Sampling temperature |
 | `cfg_coef` | float | no | 3.0 | Classifier-free guidance |
+
+For reproducibility across deployed versions, send `top_k`, `temperature`, and
+`cfg_coef` explicitly even though the localhost API supplies these defaults.
 
 **Response:**
 ```json
@@ -159,7 +166,7 @@ Regenerate from the same starting point as the last generation. Different random
 |-------|------|----------|---------|-------|
 | `session_id` | string | yes | — | Session to retry (from the continue_music response) |
 | `model_name` | string | no | from session | Try a different model |
-| `prompt_duration` | int | no | from session | Try shorter (6-8) if getting silence |
+| `prompt_duration` | int | no | from session | Try 2-4 seconds when a longer context produces silence |
 | `description` | string | no | — | |
 | `top_k` | int | no | 250 | Sampling variety; lower is more constrained, higher is more exploratory |
 | `temperature` | float | no | 1.0 | Sampling randomness |
@@ -252,9 +259,9 @@ Naively chaining 4 `continue_music` calls will almost certainly produce silence.
 
 1. **Start** with good seed audio (Jerry loop, Foundation sample, or your own WAV)
 2. **Preflight**: run `scripts/gary_preflight.py seed.wav --prompt-duration 6`; tile the seed if it is too short
-3. **Continue**: `continue_music` with `audio_data`, pick a model, `prompt_duration: 6`
+3. **Continue**: `continue_music` with `audio_data`, pick a model, and use `prompt_duration: 2` for a short source or 6 for longer material
 4. **Poll**: Get the result. Save the `session_id` in case you need to retry.
-5. **If bad**: `retry_music` with that `session_id` — try a different model or keep `prompt_duration` at 6
+5. **If bad**: `retry_music` with that `session_id` — try a different model or shorten `prompt_duration` toward 2-4 seconds
 6. **If good**: Take the new `audio_data` from the poll response and pass it into the next `continue_music` call
 7. **Repeat** — expect to retry 1-3 times per continuation on average
 8. **Mix models** — switch between models every few continuations for variety
@@ -263,4 +270,4 @@ A realistic 2-minute track might take 8-12 API calls: ~6 successful continuation
 
 ## When to Hand Off to Carey
 
-Gary/MusicGen continuations are useful for fast arrangement growth and weird model character, but they are often lo-fi compared with Carey/ACE-Step. If the goal is polished, hi-fi, vocal-like, or finished-song output, use Gary to get a section or arrangement idea, then send the result to Carey `complete` or `cover` to make it prettier. Keep Gary as the final sound only when the lo-fi or raw MusicGen texture is intentional.
+Gary/MusicGen continuations are useful for arrangement growth and raw model character. For a longer ACE-Step arrangement choose Carey **Continue** (`task_type: "repaint"`); for same-length restyling choose **Cover** (`cover-nofsq`). Today's Carey **Complete** adds accompaniment, not duration. Read [carey.md](carey.md) for the `/synth` job and multipart audio contract. Keep Gary as the final sound when its raw texture satisfies the request.

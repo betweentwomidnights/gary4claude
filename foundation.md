@@ -2,7 +2,9 @@
 
 RoyalCities Foundation-1 model. Generates synth patches, pads, bass, leads, and textured samples with fine-grained control over timbre, FX, and musical behavior. Has a powerful **randomize** endpoint that produces musically coherent presets.
 
-Base: `https://g4l.thecollabagepatch.com/foundation`
+Hosted base: `https://g4l.thecollabagepatch.com/foundation`
+
+Local base: `http://127.0.0.1:8015`. Ensure it with `python "<skill-dir>/scripts/gary4local.py" ensure foundation --json`. Remove the hosted `/foundation` prefix from local paths. Resolve `<skill-dir>` from `SKILL.md`; see `local.md`.
 
 Foundation is **async** — submit via `/generate`, poll via `/poll_status/{session_id}`.
 

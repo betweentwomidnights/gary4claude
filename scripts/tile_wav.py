@@ -11,7 +11,7 @@ from wav_utils import WavData, frame_byte_count, frames_for_seconds, read_wav, s
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Repeat a PCM WAV loop to a target duration, bar count, or reference WAV length.",
+        description="Repeat a WAV loop to a target duration, bar count, or reference WAV length.",
     )
     parser.add_argument("input", help="Input WAV loop")
     parser.add_argument("output", help="Output tiled WAV")
@@ -59,7 +59,16 @@ def main() -> None:
 
     # Keep byte length frame-aligned after slicing.
     tiled = tiled[: len(tiled) - (len(tiled) % frame_size)]
-    write_wav(args.output, WavData(audio.channels, audio.sample_width, audio.sample_rate, tiled))
+    write_wav(
+        args.output,
+        WavData(
+            audio.channels,
+            audio.sample_width,
+            audio.sample_rate,
+            tiled,
+            audio.format_tag,
+        ),
+    )
     print(f"wrote {Path(args.output)} ({wanted_frames / audio.sample_rate:.3f}s)")
 
 

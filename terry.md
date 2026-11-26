@@ -2,7 +2,9 @@
 
 Audio style transfer powered by MelodyFlow. Terry transforms existing audio using a text prompt — "8bit", "orchestral", "lo-fi", "underwater", etc. Terry is accessed through Gary's transform endpoint.
 
-Base: `https://g4l.thecollabagepatch.com`
+Hosted base: `https://g4l.thecollabagepatch.com`
+
+Local base: `http://127.0.0.1:8002`. Ensure it with `python "<skill-dir>/scripts/gary4local.py" ensure terry --json`. The `/api/juce` paths remain unchanged locally. Resolve `<skill-dir>` from `SKILL.md`; see `local.md`.
 
 Terry is **async** — submit via Gary's transform endpoint, poll via Gary's poll_status.
 
@@ -13,7 +15,7 @@ Terry doesn't have his own external endpoints. You call him through Gary:
 Use Terry as a short-section color tool, not as the final step on a long completed song unless you intentionally want only an excerpt transformed. MelodyFlow returns about 30 seconds, so a common path is:
 
 ```
-short seed or 30-second section -> Terry transform -> Gary/Carey continuation or completion
+short seed or 30-second section -> Terry transform -> Gary or Carey Continue
 ```
 
 For a two-minute song, transform selected sections individually or use Carey cover for full-length restyling.

@@ -22,7 +22,7 @@ def parse_time(value: str, bpm: float | None) -> float:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Trim a PCM WAV by seconds or bars. Examples: --start 8s --end 16s, --end 32bars --bpm 174.",
+        description="Trim a PCM or IEEE-float WAV by seconds or bars. Examples: --start 8s --end 16s, --end 32bars --bpm 174.",
     )
     parser.add_argument("input", help="Input WAV")
     parser.add_argument("output", help="Output WAV")
@@ -52,7 +52,16 @@ def main() -> None:
     end_frame = min(end_frame, audio.frame_count)
 
     trimmed = slice_frames(audio, start_frame, end_frame)
-    write_wav(args.output, WavData(audio.channels, audio.sample_width, audio.sample_rate, trimmed))
+    write_wav(
+        args.output,
+        WavData(
+            audio.channels,
+            audio.sample_width,
+            audio.sample_rate,
+            trimmed,
+            audio.format_tag,
+        ),
+    )
     print(f"wrote {Path(args.output)} ({(end_frame - start_frame) / audio.sample_rate:.3f}s)")
 
 

@@ -2,7 +2,9 @@
 
 Text-to-audio generation with BPM-aware looping. Supports the base stable-audio-open model and community finetunes from HuggingFace. Jerry is **synchronous** — audio is returned directly in the response (no polling needed).
 
-Base: `https://g4l.thecollabagepatch.com/audio`
+Hosted base: `https://g4l.thecollabagepatch.com/audio`
+
+Local base: `http://127.0.0.1:8005`. Ensure it with `python "<skill-dir>/scripts/gary4local.py" ensure jerry --json`. Remove the hosted `/audio` prefix from local paths. Resolve `<skill-dir>` from `SKILL.md`; see `local.md`.
 
 ## Agent Defaults
 

@@ -76,7 +76,10 @@ def main() -> None:
         "tile_command": (
             None
             if safe
-            else f"python scripts/tile_wav.py {args.input} tiled_for_gary.wav --seconds {target:.3f}"
+            else (
+                f'python "{Path(__file__).resolve().with_name("tile_wav.py")}" '
+                f'"{Path(args.input)}" "tiled_for_gary.wav" --seconds {target:.3f}'
+            )
         ),
     }
 
