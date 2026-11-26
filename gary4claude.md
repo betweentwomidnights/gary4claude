@@ -58,8 +58,10 @@ not a queued generation, and do not silently switch to private routing.
 Poll async operations every 3–5 seconds. Save the submission and concrete seed,
 wait for terminal success/failure, then save the actual artifacts. An id is not
 a song. Stop on explicit failure/cancellation or HTTP errors; do not poll forever
-or submit a duplicate because loading/queue progress is slow. For a retryable
-queue/backend failure, wait 30–60 seconds before one deliberate retry.
+or submit a duplicate because loading/queue progress is slow. For an explicitly
+rejected submission or a confirmed terminal job failure that is retryable, wait
+30–60 seconds before one deliberate retry. A timeout with unknown submission
+outcome is not confirmation that no job exists.
 
 Carey legacy `/cover`, `/complete`, `/lego` use `task_id`, legacy polling and
 base64 audio. Those still exist, but use [carey.md](carey.md)'s new contract for
@@ -70,6 +72,22 @@ Yuey score-only jobs finish without audio. Save their scores/MIDI before asking
 for a render. Its finished results expire after five minutes; consume/save the
 response promptly. Read each service reference for exact status names and fields.
 
+Read terminal status before extracting large payloads. Once the response says
+`completed` (or Carey says `done`), leave the polling loop and handle its result
+as a separate step. Do not remove `audio_data` and then test its presence as the
+loop's stop condition; that can keep polling a job that already finished.
+Score-only Yuey jobs never need `audio_data` to be terminal.
+
+Before reporting completion or leaving a stage, confirm that the local polling
+process has exited. An exec tool returning a running session id means that
+client process is still alive, even if audio has already been saved. If a broken
+loop remains after known terminal success, stop only that owned polling process;
+do not leave it repeatedly downloading a completed result or kill unrelated
+Python/model processes. Record the final attempt count after cleanup.
+
+Python client examples use the standard library. Do not assume `requests` is
+installed; check availability or use the documented urllib/curl paths.
+
 ## One Heavy Request at a Time
 
 For a song chain, submit exactly one generation/transform/transcription at a
@@ -77,6 +95,28 @@ time. Wait, inspect and save it, then choose the next branch. Parallel alternate
 takes require an explicit user request. Local/headless sessions also require
 ensuring the intended runtime and releasing agent-owned GPU services between
 stages, according to local.md; do not kill arbitrary processes.
+
+### Recover an Accepted Job Instead of Submitting Again
+
+A successful POST creates a job even if your local script subsequently fails
+while naming a file, parsing a response or writing audio. Preserve the raw
+submission response and id immediately, in a unique per-job directory. Keep
+submission separate from polling and result processing so you can rerun the
+latter stages without another POST.
+
+| Failure point | Recovery |
+|---------------|----------|
+| Local error after an id was returned | Read the saved response/id; poll or fetch that same job |
+| Status or result GET failed | Retry the GET for the existing id; do not regenerate the music |
+| Download saved, local WAV/MIME parsing failed | Reprocess the saved bytes; fetch the same result if necessary |
+| POST timed out and acceptance is unknown | Inspect saved response/logs for an id and reconcile the outcome before submitting again; report the uncertainty if it cannot be resolved |
+| Explicit submission rejection or confirmed terminal failure | Correct the cause; use the documented bounded retry policy if appropriate |
+
+An identical payload and seed do **not** deduplicate a request. Do not rely on
+server FIFO serialization as a reason to submit while another job's outcome is
+unknown. Preserve every accidental job id and wait for known terminal states
+before continuing the chain; cancellation may still drain remotely. Do not
+overwrite the first job's id, response or output when recovering.
 
 Keep a small session record:
 
@@ -148,11 +188,13 @@ loop is context material, not automatically a developed song. Terry commonly
 transforms about a 30-second section; use it before full-song growth or on an
 intentional excerpt, not as an assumed full-length round trip.
 
-For a finished full song, normally choose one deliberate final polish pass:
-Carey Cover or same-length SA3 Transform. Skip it for raw/demo requests, when
-declined, or if the last stage already fulfills that finishing role. An explicitly
-requested lego-vocal mix can itself be the final product; do not automatically
-regenerate it through another model. Stop when the request is satisfied.
+Polish is an optional musical decision. Carey Cover can restyle/refine an
+arrangement, and SA3 Transform can add same-length style or LoRA color; choose
+one when that change serves the brief or an identified issue. A full-duration
+generation or requested lego-vocal mix may already be the final product.
+Without audition, do not claim a cover improved the music or invoke it simply
+because the instructions offer that endpoint. No model or number of stages is
+required. Stop when the request is satisfied.
 
 ## Audio and Score Handoffs
 
@@ -214,5 +256,8 @@ wanted; once written lyrics are used, retain the exact text for later covers.
 This update is for hosted inference. Do not train LoRAs or change deployments.
 The documentation was traced through gary4juce, native model source and live
 Spark discovery on 2026-11-26. See the model guides for evidence and limits.
-Fresh-session chain trials and musical audition remain the next validation step;
-source review alone does not validate the sound of an example.
+Five initial fresh Luna trials are recorded in
+[the evaluation report](evaluations/luna-2026-11-26.md), including client recovery
+and polling errors found despite successful HTTP responses. Those trials do not
+cover every mode. Further targeted trials and musical audition remain necessary;
+source review and HTTP success alone do not validate the sound of an example.

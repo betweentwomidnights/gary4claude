@@ -78,6 +78,13 @@ submitted Python inference can continue while its result is discarded and its
 queue lane drains. Cancellation does not necessarily free the GPU immediately.
 Progress is not an ETA.
 
+Save the submission response/id before polling or parsing audio. If local code
+fails after the POST, resume that job. Re-running a combined submit-and-poll
+script can create a second generation even with an identical seed. A failed
+result download or MIME parse needs a repeated GET/local parse, not a new
+`/synth` POST. Keep per-job files distinct; see shared recovery guidance in
+[gary4claude.md](gary4claude.md).
+
 Submit using curl (`curl.exe` in Windows PowerShell):
 
 ```bash

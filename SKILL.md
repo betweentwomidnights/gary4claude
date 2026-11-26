@@ -61,14 +61,21 @@ musical step:
    the finished artifact. Read the service's exact contract.
 5. Save and inspect each returned artifact before selecting the next service or
    retry. Use the scripts in `scripts/` for WAV inspection, tiling, trimming,
-   mixing, preflight, and base64 conversion.
-6. For a finished full-song request, normally perform exactly one final polish
-   pass: Carey cover to preserve the arrangement while refining it, or SA3
-   transform for same-length restyling/LoRA color. Skip this when the user wants a
-   raw/demo result, declines polish, or the latest result already came from a
-   deliberate final cover/transform or the requested final lego-vocal mix.
-7. Stop when the result satisfies the request. Do not keep chaining model stages
-   after the finishing pass merely because they are available.
+   mixing, preflight, and base64 conversion. Confirm that your polling process
+   has exited; a completed backend job does not stop a broken client loop.
+6. Before another model call, identify the musical change it should accomplish:
+   more duration, a new part, a score edit, a style change, or an identified issue
+   to address. Cover/transform polish is optional, not an automatic finishing
+   requirement. A single generation can satisfy the brief. Without listening,
+   do not assume an extra model pass improves a take or call it audibly better.
+7. Stop when the result satisfies the request. No service or model sequence is
+   obligatory. Do not add stages just to use more models or follow an example.
+
+Persist the raw submission response and returned job/session id **before** local
+post-processing. If a script fails after submission, resume polling/fetching
+that saved id; do not rerun its POST. A seed is not an idempotency key: identical
+requests can create separate jobs. A server queue does not replace waiting for
+the current job's terminal state. See the recovery section in gary4claude.md.
 
 Carey **Continue** uses `task_type: "repaint"`: `duration` is final total seconds,
 including the source. A 32-second seed with `duration: 120` adds about 88 seconds.

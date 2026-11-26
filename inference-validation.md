@@ -5,6 +5,10 @@ No music generations or production changes were made during that review. These
 are musical/agent trials to run with the user next, one heavy request at a time.
 Use the hosted profile; do not turn these into a deployment or training task.
 
+Initial results are in [the Luna evaluation report](evaluations/luna-2026-11-26.md).
+It distinguishes identical-brief comparisons from targeted coverage and lists
+modes that remain untested. Audio audition is still pending.
+
 ## Useful JUCE Reference Capture
 
 A multi-lane SA3 Continue is the most useful next human reference: two or three
@@ -42,6 +46,25 @@ For each trial retain the prompt, request JSON, submission/status metadata,
 ordered artifacts, intended versus actual duration and a short listening note.
 If no listening tool is available, mark musical quality unassessed. Do not count
 successful HTTP transport as evidence that the continuation or vocal works.
+
+Also retain local exceptions and compare generation POST timelines: all requests
+can return 200 while a crashed client accidentally submits the same job twice.
+Record accepted jobs, duplicates, unknown submission outcomes, recovery choices
+and whether each next POST followed a known terminal state. HTTP failure counts
+alone miss this class of error.
+
+Observe the attempt log after an agent reports completion. It should stop
+growing unless an explicitly documented next stage is active. A final answer
+and a saved WAV do not prove that a polling subprocess exited. Stop owned
+stray pollers, preserve the complete log, and count repeated completed-result
+downloads as client lifecycle errors even when every response is 200.
+
+When testing model choice, use independent contexts with the same pinned commit
+and brief; do not feed earlier decisions or proposed model sequences into later
+sessions. Keep task-specific coverage probes separate from identical-brief
+comparisons. Report the instructions that influenced choices, and distinguish
+an explicit procedural requirement from apparent musical preference. A small
+sample with one genre/length is not evidence of globally unbiased selection.
 
 ## Known Remaining Limits
 

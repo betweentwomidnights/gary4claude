@@ -312,6 +312,40 @@ curl -s https://g4l.thecollabagepatch.com/sa3/poll_status/$SESSION_ID
 Completion response includes `audio_data` and `meta`. `meta` can include exact loop,
 transform, or continue timing details. Save it with the take.
 
+Use terminal status to exit polling before extracting the audio. For example,
+with a previously saved session id, Python's standard library is sufficient:
+
+```python
+import base64
+import json
+import time
+from pathlib import Path
+from urllib.request import Request, urlopen
+
+session_id = "<saved session_id>"
+url = f"https://g4l.thecollabagepatch.com/sa3/poll_status/{session_id}"
+while True:
+    with urlopen(Request(url, headers={"User-Agent": "gary4claude/1.0"}), timeout=120) as response:
+        result = json.load(response)
+    status = result.get("status")
+    if status == "failed" or result.get("success") is False:
+        raise RuntimeError(result.get("error", "SA3 job failed"))
+    if status == "completed":
+        break
+    time.sleep(4)
+
+audio = result.get("audio_data")
+if not audio:
+    raise RuntimeError("Completed SA3 job returned no audio_data")
+Path("output.wav").write_bytes(base64.b64decode(audio, validate=True))
+metadata = {key: value for key, value in result.items() if key != "audio_data"}
+Path("result.json").write_text(json.dumps(metadata, indent=2), encoding="utf-8")
+```
+
+If decoding/writing fails, recover the existing result; do not submit another
+generation. Do not use a removed `audio_data` field to decide whether to poll
+again. Save to a new take filename instead of overwriting an accepted result.
+
 ## Chaining Guidance
 
 SA3 is useful at the beginning, middle, or end of a chain:

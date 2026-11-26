@@ -84,6 +84,7 @@ sequential service workflow.
 - `yuey.md` — YuE2: transcription/remix, ABC editing, score and encoded-audio continuation
 - `terry.md` — MelodyFlow: audio transforms via Gary
 - `inference-validation.md` — reference captures and fresh-session chain checks still to audition
+- `evaluations/luna-2026-11-26.md` — five fresh Luna trials, observed client errors and instruction-bias findings
 
 ## Utility Scripts
 
